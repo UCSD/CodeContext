@@ -1,0 +1,207 @@
+#!/bin/bash
+
+# Parse long options
+for arg in "$@"; do
+    shift
+    case "$arg" in
+        "--path") set -- "$@" "-p" ;;
+        "--help") set -- "$@" "-h" ;;
+        "--accept") set -- "$@" "-a" ;;
+         *) set -- "$@" "$arg"
+    esac
+done
+
+# Parse short options
+path=""
+accept_notice=false
+while getopts "a:p:h" opt; do
+    case $opt in
+        a) accept_notice=true ;;
+        p) path="$OPTARG" ;;
+        h) 
+           echo "
+About:
+  Name:     Code Context
+  Version:  1.0.0
+  Author:   Charles Bryant (c3bryant@ucsd.edu)
+  Language: BASH
+  Description: A CLI tool designed to provide a comprehensive overview of your project by capturing its directory structures and file contents. It aims to facilitate a deeper understanding of the project's context. By default, it encompasses the entire project but can be customized to concentrate on specific parts with the --path option.
+
+Usage:
+  Run 'codecontext' to obtain a detailed context of your project's structure and content. The tool defaults to the current project's full context but can be adjusted to a specific scope with the --path parameter.
+
+  $ codecontext [--accept] [--path PATH] [--help]
+
+Options:
+    -a, --accept      Accept the campus notice and proceed.
+    -p, --path        Specify a particular path within the project for a more targeted context (defaults to the current directory).
+    -h, --help        Display this help message and exit.
+
+Installation:
+  To ensure 'codecontext' is globally accessible and executable:
+
+  1. Relocate the script to your PATH:
+     $ sudo mv codecontext /usr/local/bin/codecontext
+    
+  2. Change the script's permissions to make it executable:
+     $ sudo chmod +x /usr/local/bin/codecontext
+"
+           exit 0
+           ;;
+
+
+        \?) 
+            echo "Invalid option -$OPTARG" >&2 
+            exit 1
+            ;;
+        :)
+            echo "Option -$OPTARG requires an argument." >&2
+            exit 1
+            ;;
+    esac
+done
+
+# Initial checks and alerts
+if [ "$accept_notice" = false ]; then  
+    echo "################################################################
+CAMPUS NOTICE - OFFICE OF THE CHIEF INFORMATION SECURITY OFFICER
+Data Protection and ChatGPT
+https://adminrecords.ucsd.edu/Notices/2023/2023-3-23-2.html
+################################################################
+"
+    read -p "Press Y to continue or any other key to exit: " -n 1 -r
+    echo    # move to a new line
+    if [[ ! $REPLY =~ ^[Y]$ ]]
+    then
+        exit 1
+    fi
+fi
+
+# Set the basepath to the specified path, or to the current directory if no path is provided
+if [ -n "$path" ]; then
+    basepath="$path"
+else
+    basepath="."
+fi
+
+# Check if the basepath exists
+if [ ! -d "$basepath" ]; then
+    echo "The path '$basepath' does not exist."
+    exit 1
+fi
+
+# Function to count the number of files in the directory
+count_files() {
+    local basepath="$1"
+    if [[ -z "$basepath" ]]; then
+        echo "Usage: count_files <directory>"
+        return 1
+    fi
+
+    local count=$(find "$basepath" \
+        \( -path '*/.*' -o -path '*/node_modules*' -o -path '*/Pods*' \) -prune -o \
+        -type f ! -name '*.log' -print | wc -l | tr -d ' ')
+    echo "$count"
+}
+
+# Function to display the directory tree
+display_directory_tree() {
+    local currentpath="$1"
+    local indent="${2:-0}"
+    for item in "$currentpath"/*; do  # Updated to use $currentpath directly
+        if [[ -d "$item" && ! $(basename "$item") =~ ^\..* ]]; then
+            printf "%*s%s\n" $((indent*4)) '' "$(basename "$item")"
+            display_directory_tree "$item" $((indent+1))
+        fi
+    done
+}
+
+# Function to display content of files based on grep check
+display_file_content() {
+    
+    local filepath="$1"
+    if [ ! -r "$filepath" ]; then
+        echo "Warning: No read permission for $filepath. Skipping."
+        return
+    fi
+    local filename=$(basename -- "$filepath")
+    local extension="${filename##*.}"
+    local relativepath="${filepath#$basepath/}"
+
+    # Skipping specific file types
+    if [[ "$extension" == "log" ]]; then
+        return
+    fi
+
+    # Using grep to check if the file contains text content
+    if grep -Iq . "$filepath"; then
+        echo "$relativepath:"
+        if [ "$filename" != "$extension" ]; then
+            echo "\`\`\`$extension"
+        else
+            echo "\`\`\`"
+        fi
+        cat "$filepath"
+        echo
+        echo "\`\`\`"
+        echo
+    fi
+}
+
+# Function to recursively list directories and read content of files, avoiding symlinks, third-party dependencies, and .log files
+list_dirs_and_read_files() {
+    local currentdir="$1"
+    for item in "$currentdir"/*; do
+        # Skip symlinks
+        if [ -L "$item" ]; then
+            echo "Warning: $item is a symlink. Skipping."
+            continue
+        fi
+
+        # Skip hidden files and directories, node_modules, and Pods
+        if [[ $(basename "$item") =~ ^\..* ]] || [[ "$item" =~ node_modules ]] || [[ "$item" =~ Pods ]]; then
+            continue
+        fi
+
+        # Process files and directories
+        if [[ -f "$item" ]]; then
+            local extension="${item##*.}"
+            if [[ "$extension" != "log" ]]; then
+                display_file_content "$item"
+            fi
+        elif [[ -d "$item" ]]; then
+            list_dirs_and_read_files "$item"
+        fi
+    done
+}
+
+# Check the total number of files
+total_files=$(count_files "$basepath")
+if [ "$total_files" -gt 1000 ]; then
+    echo "The directory contains more than 1000 files. Aborting."
+    exit 1
+fi
+
+# Capture all output
+output=$(
+# Count non-hidden directories
+dir_count=$(find "$basepath" -mindepth 1 -type d -not -path '*/.*' | wc -l | tr -d ' ')
+
+# Display directory tree
+if [ "$dir_count" -gt 0 ]; then
+    echo "-----------------------------------"
+    echo "          Directory Tree           "
+    echo "-----------------------------------"
+    display_directory_tree "$basepath" 0
+    echo
+fi
+
+
+# List files and their content
+echo "-----------------------------------"
+echo "          Files and Content        "
+echo "-----------------------------------"
+list_dirs_and_read_files "$basepath"
+)
+
+echo "$output"
