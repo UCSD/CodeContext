@@ -9,8 +9,8 @@
 
 By utilizing the `--path` parameter, users can tailor the tool to focus on specific areas of the project, allowing for detailed exploration of particular directories or files.
 
-**Version:** 1.0.0  
-**Author:** c3bryant@ucsd.edu
+**Version:** 1.1.0  
+**Author:** c3bryant@ucsd.edu  
 **Language:** BASH  
 
 ## Usage
@@ -44,5 +44,5 @@ sudo chmod +x /usr/local/bin/codecontext
 ## Limitations
 - The project directory must contain fewer than 1000 files.
 - Does not include hidden folders and files.
-- Excludes third-party dependencies and log files.
+- Excludes third-party dependencies, lock files, tests coverage, and log files.
 - Limited to supporting plain text files.

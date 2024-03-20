@@ -99,7 +99,7 @@ count_files() {
     fi
 
     local count=$(find "$basepath" \
-        \( -path '*/.*' -o -path '*/node_modules*' -o -path '*/Pods*' \) -prune -o \
+        \( -path '*/.*' -o -path '*/node_modules*' -o -path '*/Pods*' -o -path '*/coverage*' \) -prune -o \
         -type f ! -name '*.log' -print | wc -l | tr -d ' ')
     echo "$count"
 }
@@ -108,7 +108,12 @@ count_files() {
 display_directory_tree() {
     local currentpath="$1"
     local indent="${2:-0}"
-    for item in "$currentpath"/*; do  # Updated to use $currentpath directly
+    for item in "$currentpath"/*; do
+        # Skip node_modules, Pods, coverage directories and subdirectories
+        if [[ "$item" =~ node_modules ]] || [[ "$item" =~ Pods ]] || [[ "$item" =~ coverage ]]; then
+            continue
+        fi
+
         if [[ -d "$item" && ! $(basename "$item") =~ ^\..* ]]; then
             printf "%*s%s\n" $((indent*4)) '' "$(basename "$item")"
             display_directory_tree "$item" $((indent+1))
@@ -127,6 +132,11 @@ display_file_content() {
     local filename=$(basename -- "$filepath")
     local extension="${filename##*.}"
     local relativepath="${filepath#$basepath/}"
+
+    # Skipping lock files
+    if [[ "$filename" == *lock.json ]] || [[ "$filename" == *.lock ]] || [[ "$filename" == *lock.yaml ]] || [[ "$filename" == *lock.yml ]]; then
+        return
+    fi
 
     # Skipping specific file types
     if [[ "$extension" == "log" ]]; then
@@ -158,8 +168,8 @@ list_dirs_and_read_files() {
             continue
         fi
 
-        # Skip hidden files and directories, node_modules, and Pods
-        if [[ $(basename "$item") =~ ^\..* ]] || [[ "$item" =~ node_modules ]] || [[ "$item" =~ Pods ]]; then
+        # Skipping hidden files and directories, node_modules, Pods, test coverage, and lock files
+        if [[ $(basename "$item") =~ ^\..* ]] || [[ "$item" =~ node_modules ]] || [[ "$item" =~ Pods ]] || [[ "$item" =~ coverage ]] || [[ $(basename "$item") == *lock.json ]] || [[ $(basename "$item") == *.lock ]] || [[ $(basename "$item") == *lock.yaml ]] || [[ $(basename "$item") == *lock.yml ]]; then
             continue
         fi
 
